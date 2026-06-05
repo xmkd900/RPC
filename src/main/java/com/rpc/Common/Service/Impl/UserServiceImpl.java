@@ -1,10 +1,11 @@
 package com.rpc.Common.Service.Impl;
 
+import com.rpc.Common.Service.UserService;
 import com.rpc.Common.pojo.User;
 
 import java.util.UUID;
 
-public class UserServiceImpl implements UserService{
+public class UserServiceImpl implements UserService {
 
     @Override
     public User getUserByUserId(Integer userId) {

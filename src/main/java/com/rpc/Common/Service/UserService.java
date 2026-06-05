@@ -1,4 +1,4 @@
-package com.rpc.Common.Service.Impl;
+package com.rpc.Common.Service;
 
 import com.rpc.Common.pojo.User;
 
