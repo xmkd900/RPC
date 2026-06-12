@@ -13,14 +13,13 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 
-@AllArgsConstructor
-@NoArgsConstructor
-@Data
+
 public class ClientProxy implements InvocationHandler {
-    private String host;
-    private int port;
     private RpcClient rpcClient;
 
+    public ClientProxy(){
+this.rpcClient=new NettyRpcClient();
+    }
     @Override
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
         //封装rpcrequest请求
