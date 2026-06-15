@@ -1,6 +1,7 @@
 package com.rpc.Common.Service.Impl;
 
 import com.rpc.Common.Service.UserService;
+import com.rpc.Common.annotation.Retryable;
 import com.rpc.Common.pojo.User;
 
 import java.util.UUID;

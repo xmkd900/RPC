@@ -1,5 +1,6 @@
 package com.rpc.Server.serviceRegister.impl;
 
+import com.rpc.Common.annotation.Retryable;
 import com.rpc.Server.serviceRegister.ServiceRegister;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.curator.RetryPolicy;
@@ -7,12 +8,15 @@ import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.zookeeper.CreateMode;
-
+import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.List;
 
 @Slf4j
 public class ZKServiceRegister implements ServiceRegister {
 
+    private static final String RETRY = "CANRETRY";
     //zookeeper客户端
     private CuratorFramework client;
     //注册路径
@@ -31,7 +35,8 @@ public class ZKServiceRegister implements ServiceRegister {
     }
 
     @Override
-    public void register(String serviceName, InetSocketAddress serviceAddress) {
+    public void register(Class<?>clazz, InetSocketAddress serviceAddress) {
+        String serviceName = clazz.getName();
         try {
             if (client.checkExists().forPath("/" + serviceName) == null) {
                 client.create().creatingParentsIfNeeded()
@@ -40,9 +45,15 @@ public class ZKServiceRegister implements ServiceRegister {
             }
             String path="/"+serviceName+"/"+getServiceAddress(serviceAddress);
             client.create().creatingParentsIfNeeded().withMode(CreateMode.EPHEMERAL).forPath(path);
+            List<String> retryableMethods = getRetryableMethod(clazz);
+            log.info("可重试的方法有{}",retryableMethods);
+            CuratorFramework retryClient = client.usingNamespace(RETRY);
+            for(String method:retryableMethods){
+                retryClient.create().creatingParentsIfNeeded().withMode(CreateMode.EPHEMERAL)
+                        .forPath("/"+getServiceAddress(serviceAddress)+"/"+method);
+            }
 
         } catch (Exception e) {
-            log.info("该节点已存在");
             log.error("注册服务 {} 失败", serviceName, e);
         }
     }
@@ -54,5 +65,31 @@ public class ZKServiceRegister implements ServiceRegister {
     private InetSocketAddress parseServiceAddress(String address){
         String[]list=address.split(":");
         return new InetSocketAddress(list[0],Integer.parseInt(list[1]));
+    }
+
+    private List<String> getRetryableMethod(Class<?> clazz){
+        List<String> retryableMethods = new ArrayList<>();
+        for (Method method : clazz.getDeclaredMethods()) {
+            if (method.isAnnotationPresent(Retryable.class)) {
+                String methodSignature = getMethodSignature(clazz, method);
+                retryableMethods.add(methodSignature);
+            }
+        }
+        return retryableMethods;
+    }
+
+    private String getMethodSignature(Class<?> clazz, Method method) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(clazz.getName()).append("#").append(method.getName()).append("(");
+        Class<?>[] parameterTypes = method.getParameterTypes();
+        for (int i = 0; i < parameterTypes.length; i++) {
+            sb.append(parameterTypes[i].getName());
+            if (i < parameterTypes.length - 1) {
+                sb.append(",");
+            } else{
+                sb.append(")");
+            }
+        }
+        return sb.toString();
     }
 }

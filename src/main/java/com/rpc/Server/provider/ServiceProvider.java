@@ -26,7 +26,7 @@ public class ServiceProvider {
         Class<?>[] interfaces = service.getClass().getInterfaces();
         for (Class<?> i : interfaces) {
             interfaceProvider.put(i.getName(), service);
-            serviceRegister.register(i.getName(), new InetSocketAddress(host, port));
+            serviceRegister.register(i, new InetSocketAddress(host, port));
         }
     }
 
