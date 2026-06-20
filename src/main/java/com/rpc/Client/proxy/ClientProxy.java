@@ -1,5 +1,7 @@
 package com.rpc.Client.proxy;
 
+import com.rpc.Client.circuitBreaker.CircuitBreaker;
+import com.rpc.Client.circuitBreaker.CircuitBreakerProvider;
 import com.rpc.Client.netty.rpcClient.Impl.NettyRpcClient;
 import com.rpc.Client.netty.rpcClient.RpcClient;
 import com.rpc.Client.netty.serviceCenter.ZKServiceCenter;
@@ -17,9 +19,12 @@ public class ClientProxy implements InvocationHandler {
 
     private ZKServiceCenter zkServiceCenter;
 
+    private CircuitBreakerProvider circuitBreakerProvider;
+
     public ClientProxy(){
 this.rpcClient=new NettyRpcClient();
 this.zkServiceCenter=new ZKServiceCenter();
+this.circuitBreakerProvider=new CircuitBreakerProvider();
     }
     @Override
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
@@ -30,6 +35,10 @@ this.zkServiceCenter=new ZKServiceCenter();
                 .parameters(args)
                 .parameterTypes(method.getParameterTypes())
                 .build();
+        CircuitBreaker circuitBreaker = circuitBreakerProvider.getCircuitBreaker(method.getName());
+        if(!circuitBreaker.allowRequest()){
+            return null;
+        }
         RPCresponse response;
         String methodSignature=getMethodSignature(rpcRequest.getInterfaceName(),method);
         if(zkServiceCenter.checkRetry(zkServiceCenter.serviceDiscovery(rpcRequest.getInterfaceName()),methodSignature)){
@@ -37,8 +46,15 @@ this.zkServiceCenter=new ZKServiceCenter();
         }else{
             response=rpcClient.sendRequest(rpcRequest);
         }
-
-        return response.getData();
+       if(response!=null){
+            int code = response.getCode();
+            if (code == 200) {
+                circuitBreaker.recordSuccess();
+            } else if (code == 500) {
+                circuitBreaker.recordFail();
+            }
+        }
+        return response!=null?response.getData():null;
 
     }
 
