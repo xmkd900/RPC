@@ -1,0 +1,70 @@
+package com.Server.server.netty.handler;
+
+import com.Server.provider.ServiceProvider;
+import com.Server.ratelimit.RateLimit;
+import com.common.Message.RPCrequest;
+import com.common.Message.RPCresponse;
+import com.common.Message.RequestType;
+import com.trace.interceptor.ServerTraceInterceptor;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.SimpleChannelInboundHandler;
+import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+
+@Slf4j
+@AllArgsConstructor
+public class NettyRPCServerHandler extends SimpleChannelInboundHandler<RPCrequest> {
+
+    private ServiceProvider serviceProvider;
+    @Override
+    protected void channelRead0(ChannelHandlerContext channelHandlerContext, RPCrequest rpCrequest) throws Exception {
+        if (rpCrequest == null) {
+            log.error("接收到非法请求，RpcRequest 为空");
+            return;
+        }
+        if (rpCrequest.getType() == RequestType.HEARTBEAT) {
+            log.info("接收到来自客户端的心跳包");
+            return;
+        }
+        log.info("收到请求：interface={}, method={}", rpCrequest.getInterfaceName(), rpCrequest.getMethodName());
+        if(rpCrequest.getType() == RequestType.NORMAL) {
+            //trace记录
+            ServerTraceInterceptor.beforeHandle();
+
+            RPCresponse response = getResponse(rpCrequest);
+            //ctx.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE);
+
+            //trace上报
+            ServerTraceInterceptor.afterHandle(rpCrequest.getMethodName());
+
+            channelHandlerContext.writeAndFlush(response);
+        }
+    }
+
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+        cause.printStackTrace();
+        ctx.close();
+    }
+
+    private RPCresponse getResponse(RPCrequest request){
+        String interfaceName=request.getInterfaceName();
+        RateLimit rateLimit=serviceProvider.getRateLimitProvider().getRateLimit(interfaceName);
+        if(!rateLimit.getToken()){
+            log.info("服务器限流，接口：{}",interfaceName);
+            return RPCresponse.fail(500,"rate limit");
+        }
+        Object service = serviceProvider.getService(interfaceName);
+        try {
+            Method method=service.getClass().getMethod(request.getMethodName(),request.getParameterTypes());
+           Object result= method.invoke(service,request.getParameters());
+           return RPCresponse.success(result);
+        } catch (Exception e) {
+           e.printStackTrace();
+           return RPCresponse.fail(500,e.getMessage());
+        }
+    }
+}

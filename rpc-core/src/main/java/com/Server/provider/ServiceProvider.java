@@ -1,0 +1,42 @@
+package com.Server.provider;
+
+import com.Server.ratelimit.Provider.RateLimitProvider;
+import com.Server.serviceRegister.ServiceRegister;
+import com.Server.serviceRegister.impl.ZKServiceRegister;
+import lombok.Data;
+
+import java.net.InetSocketAddress;
+import java.util.HashMap;
+import java.util.Map;
+
+@Data
+public class ServiceProvider {
+    //存放服务的实例
+    private Map<String, Object> interfaceProvider;
+    private String host;
+    private int port;
+    private ServiceRegister serviceRegister;
+    private RateLimitProvider rateLimitProvider;
+
+    public ServiceProvider(String host,int port){
+        this.host=host;
+        this.port=port;
+        this.interfaceProvider=new HashMap<>();
+        this.serviceRegister=new ZKServiceRegister();
+        this.rateLimitProvider=new RateLimitProvider();
+    }
+
+    public void provideServiceInterface(Object service ) {
+        String interfaceName = service.getClass().getName();
+        Class<?>[] interfaces = service.getClass().getInterfaces();
+        for (Class<?> i : interfaces) {
+            interfaceProvider.put(i.getName(), service);
+            serviceRegister.register(i, new InetSocketAddress(host, port));
+        }
+    }
+
+    public Object getService(String interfaceName){
+        return interfaceProvider.get(interfaceName);
+    }
+
+}
